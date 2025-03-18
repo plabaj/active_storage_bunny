@@ -8,10 +8,13 @@ module ActiveStorage
   # See ActiveStorage::Service for the generic API documentation that applies to all services.
   class Service::BunnyService < Service
 
-    attr_reader :client, :base_url
+    attr_reader :client, :base_url, :access_key, :storage_zone, :region
 
     def initialize(access_key:, api_key:, storage_zone:, region:, cdn: false)
       @client = BunnyStorageClient.new(access_key, api_key, storage_zone, region)
+      @access_key = access_key
+      @storage_zone = storage_zone
+      @region = region
 
       if cdn
         @base_url = cdn
@@ -73,10 +76,8 @@ module ActiveStorage
 
     def url_for_direct_upload(key, expires_in:, content_type:, content_length:, checksum:, custom_metadata: {})
       instrument :url, key: key do |payload|
-        generated_url = object_for(key).presigned_url :put, expires_in: expires_in.to_i,
-                                                            content_type: content_type, content_length: content_length, content_md5: checksum,
-                                                            metadata: custom_metadata, whitelist_headers: ['content-length'], **upload_options
-
+        upload_base_url = region ? "#{region}.storage.bunnycdn.com" : "storage.bunnycdn.com"
+        generated_url = "https://#{upload_base_url}/#{storage_zone}/#{key}"
         payload[:url] = generated_url
 
         generated_url
@@ -84,9 +85,7 @@ module ActiveStorage
     end
 
     def headers_for_direct_upload(key, content_type:, checksum:, filename: nil, disposition: nil, custom_metadata: {}, **)
-      content_disposition = content_disposition_with(type: disposition, filename: filename) if filename
-
-      { 'Content-Type' => content_type, 'Content-MD5' => checksum, 'Content-Disposition' => content_disposition, **custom_metadata_headers(custom_metadata) }
+      { 'AccessKey' => access_key, 'Content-Type' => 'application/octet-stream' }
     end
 
     private
@@ -98,6 +97,10 @@ module ActiveStorage
 
     def public_url(key)
       File.join(base_url, key)
+    end
+
+    def custom_metadata_headers(custom_metadata)
+      {}
     end
 
     def upload_with_single_part(key, io, checksum: nil, content_type: nil, content_disposition: nil, custom_metadata: {})
