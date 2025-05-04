@@ -44,6 +44,14 @@ module ActiveStorage
       end
     end
 
+    def download_chunk(key, range)
+      instrument :download_chunk, key: key, range: range do
+        io = StringIO.new object_for(key).get_file(range: "bytes=#{range.begin}-#{range.exclude_end? ? range.end - 1 : range.end}")
+
+        io.set_encoding(Encoding::BINARY)
+      end
+    end
+
     def delete(key)
       instrument :delete, key: key do
         object_for(key).delete_file
